@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TCP Network Congestion Control Simulator</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            color: #00adb5;
+            margin-bottom: 20px;
+        }
+        .control-panel {
+            background-color: #1e1e1e;
+            padding: 20px;
+            border-radius: 8px;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+            border: 1px solid #333;
+        }
+        label {
+            font-weight: 600;
+        }
+        input, button {
+            padding: 10px;
+            border-radius: 5px;
+            border: none;
+            font-size: 14px;
+        }
+        input {
+            background-color: #2e2e2e;
+            color: white;
+            width: 100px;
+            text-align: center;
+        }
+        button {
+            background-color: #00adb5;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+            padding: 10px 20px;
+        }
+        button:hover {
+            background-color: #008c93;
+        }
+        .chart-box {
+            background-color: #1e1e1e;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #333;
+        }
+        .console-box {
+            background-color: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 15px;
+        }
+        .console-box h3 {
+            margin-top: 0;
+            color: #58a6ff;
+        }
+        pre {
+            background-color: #161b22;
+            color: #7ee787;
+            padding: 15px;
+            border-radius: 5px;
+            height: 250px;
+            overflow-y: auto;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>TCP Network Congestion Control Simulator</h1>
+
+        <div class="control-panel">
+            <label for="packets">Total Packets:</label>
+            <input type="number" id="packets" value="100" min="10" max="1000">
+
+            <label for="loss">Packet Loss (%):</label>
+            <input type="number" id="loss" value="10" min="0" max="100">
+
+            <button onclick="runSimulation()">Run Simulation</button>
+        </div>
+
+        <div class="chart-box">
+            <canvas id="cwndChart"></canvas>
+        </div>
+
+        <div class="console-box">
+            <h3>C++ Execution Console Output</h3>
+            <pre id="consoleLogs">Click "Run Simulation" to view C++ execution logs...</pre>
+        </div>
+    </div>
+
+    <script>
+        let chart;
+
+        async function runSimulation() {
+            const packets = document.getElementById('packets').value;
+            const loss = document.getElementById('loss').value;
+            const logElement = document.getElementById('consoleLogs');
+
+            logElement.textContent = "Running C++ simulation engine...";
+
+            try {
+                const res = await fetch('/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ packets: Number(packets), loss: Number(loss) })
+                });
+
+                const data = await res.json();
+                
+                // Update graph and console logs
+                updateChart(data.tahoe, data.reno);
+                logElement.textContent = data.logs;
+                logElement.scrollTop = logElement.scrollHeight;
+            } catch (err) {
+                logElement.textContent = "Error executing simulation bridge! Make sure app.py is running.";
+            }
+        }
+
+        function updateChart(tahoe, reno) {
+            // Determine total max rounds needed for X-axis labels
+            const maxRounds = Math.max(tahoe.length, reno.length);
+            const labels = Array.from({ length: maxRounds }, (_, i) => `Round ${i + 1}`);
+
+            // Safely map cwnd datasets so both stay visible even if round lengths differ
+            const tahoeCwnd = labels.map((_, i) => (i < tahoe.length ? tahoe[i].cwnd : null));
+            const renoCwnd = labels.map((_, i) => (i < reno.length ? reno[i].cwnd : null));
+
+            if (chart) chart.destroy();
+
+            const ctx = document.getElementById('cwndChart').getContext('2d');
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'TCP Tahoe cwnd',
+                            data: tahoeCwnd,
+                            borderColor: '#ff5722',
+                            backgroundColor: '#ff5722',
+                            fill: false,
+                            spanGaps: true,
+                            tension: 0.1
+                        },
+                        {
+                            label: 'TCP Reno cwnd',
+                            data: renoCwnd,
+                            borderColor: '#00adb5',
+                            backgroundColor: '#00adb5',
+                            fill: false,
+                            spanGaps: true,
+                            tension: 0.1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: { 
+                            display: true, 
+                            text: 'Congestion Window (cwnd) Performance Comparison: TCP Tahoe vs. TCP Reno', 
+                            color: '#fff', 
+                            font: { size: 16 } 
+                        },
+                        legend: { labels: { color: '#fff' } }
+                    },
+                    scales: {
+                        x: { 
+                            title: { display: true, text: 'RTT Round', color: '#ccc' }, 
+                            ticks: { color: '#ccc' }, 
+                            grid: { color: '#333' } 
+                        },
+                        y: { 
+                            title: { display: true, text: 'cwnd (MSS)', color: '#ccc' }, 
+                            ticks: { color: '#ccc' }, 
+                            grid: { color: '#333' } 
+                        }
+                    }
+                }
+            });
+        }
+
+        // Run initial simulation on load
+        runSimulation();
+    </script>
+</body>
+</html>
